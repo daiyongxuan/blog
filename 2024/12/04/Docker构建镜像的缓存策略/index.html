@@ -19,15 +19,20 @@
 
 <script class="next-config" data-name="main" type="application/json">{"hostname":"daiyongxuan.github.io","root":"/blog/","images":"/blog/images","scheme":"Muse","darkmode":false,"version":"8.21.1","exturl":false,"sidebar":{"position":"left","width_expanded":320,"width_dual_column":240,"display":"post","padding":18,"offset":12},"hljswrap":true,"copycode":{"enable":false,"style":null},"fold":{"enable":false,"height":500},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"duration":200,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"i18n":{"placeholder":"Searching...","empty":"We didn't find any results for the search: ${query}","hits_time":"${hits} results found in ${time} ms","hits":"${hits} results found"}}</script><script src="/blog/js/config.js"></script>
 
-    <meta property="og:type" content="article">
+    <meta name="description" content="Docker和buildah都是用来构建容器镜像的工具,并且buildah也可以接受一个Dockerfile来构建容器镜像.由于二者都使用类似的文件系统层(OverlayFS或AUFS),每一层文件都是上一层的增量修改,本质上是相似的,所以二者在镜像大小上一般来说是相似的. TTS是一个将文字转为语音的开源软件,最近在构建这个软件的镜像时候出现了一个问题,使用Docker构建该镜像,镜像大小为10">
+<meta property="og:type" content="article">
 <meta property="og:title" content="Docker构建镜像的缓存策略">
 <meta property="og:url" content="http://daiyongxuan.github.io/blog/2024/12/04/Docker%E6%9E%84%E5%BB%BA%E9%95%9C%E5%83%8F%E7%9A%84%E7%BC%93%E5%AD%98%E7%AD%96%E7%95%A5/index.html">
 <meta property="og:site_name" content="Hexo">
+<meta property="og:description" content="Docker和buildah都是用来构建容器镜像的工具,并且buildah也可以接受一个Dockerfile来构建容器镜像.由于二者都使用类似的文件系统层(OverlayFS或AUFS),每一层文件都是上一层的增量修改,本质上是相似的,所以二者在镜像大小上一般来说是相似的. TTS是一个将文字转为语音的开源软件,最近在构建这个软件的镜像时候出现了一个问题,使用Docker构建该镜像,镜像大小为10">
 <meta property="og:locale" content="en_US">
+<meta property="og:image" content="http://daiyongxuan.github.io/blog/2024/12/04/Docker%E6%9E%84%E5%BB%BA%E9%95%9C%E5%83%8F%E7%9A%84%E7%BC%93%E5%AD%98%E7%AD%96%E7%95%A5/docker-history.png">
+<meta property="og:image" content="http://daiyongxuan.github.io/blog/2024/12/04/Docker%E6%9E%84%E5%BB%BA%E9%95%9C%E5%83%8F%E7%9A%84%E7%BC%93%E5%AD%98%E7%AD%96%E7%95%A5/docker-reduce.png">
 <meta property="article:published_time" content="2024-12-04T07:25:01.000Z">
-<meta property="article:modified_time" content="2024-12-04T07:25:01.633Z">
+<meta property="article:modified_time" content="2024-12-05T02:15:56.858Z">
 <meta property="article:author" content="Adrian">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://daiyongxuan.github.io/blog/2024/12/04/Docker%E6%9E%84%E5%BB%BA%E9%95%9C%E5%83%8F%E7%9A%84%E7%BC%93%E5%AD%98%E7%AD%96%E7%95%A5/docker-history.png">
 
 
 <link rel="canonical" href="http://daiyongxuan.github.io/blog/2024/12/04/Docker%E6%9E%84%E5%BB%BA%E9%95%9C%E5%83%8F%E7%9A%84%E7%BC%93%E5%AD%98%E7%AD%96%E7%95%A5/">
@@ -113,7 +118,7 @@
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
         <a href="/blog/archives/">
-          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-count">4</span>
           <span class="site-state-item-name">posts</span>
         </a>
       </div>
@@ -172,6 +177,13 @@
 
       <time title="Created: 2024-12-04 15:25:01" itemprop="dateCreated datePublished" datetime="2024-12-04T15:25:01+08:00">2024-12-04</time>
     </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">Edited on</span>
+      <time title="Modified: 2024-12-05 10:15:56" itemprop="dateModified" datetime="2024-12-05T10:15:56+08:00">2024-12-05</time>
+    </span>
 
   
     <span class="post-meta-item" title="Views" id="busuanzi_container_page_pv">
@@ -189,7 +201,25 @@
     
     
     
-    <div class="post-body" itemprop="articleBody">
+    <div class="post-body" itemprop="articleBody"><p>Docker和buildah都是用来构建容器镜像的工具,并且buildah也可以接受一个Dockerfile来构建容器镜像.由于二者都使用类似的文件系统层(OverlayFS或AUFS),每一层文件都是上一层的增量修改,本质上是相似的,所以二者在镜像大小上一般来说是相似的.</p>
+<p><a target="_blank" rel="noopener" href="https://github.com/coqui-ai/TTS">TTS</a>是一个将文字转为语音的开源软件,最近在构建这个软件的镜像时候出现了一个问题,使用Docker构建该镜像,镜像大小为10GB,而buildah则只需要8GB,如此大的差距显然不合理.</p>
+<p>经过测试,才发现,问题出在TTS提供的Dockerfile,其中安装torch的时候,其执行的指令是这样的</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">RUN pip3 install llvmlite --ignore-installed</span><br><span class="line">RUN pip3 install torch torchaudio --extra-index-url https://download.pytorch.org/whl/cu118</span><br><span class="line">RUN <span class="built_in">rm</span> -rf /root/.cache/pip</span><br></pre></td></tr></table></figure>
+
+<p>由于pip的<a target="_blank" rel="noopener" href="https://pip.pypa.io/en/stable/topics/caching/">缓存机制</a>,使用<code>pip install</code>指令,会将pypi包缓存在文件夹<code>~/.cache/pip</code>之中.</p>
+<p>不过后面有执行了指令<code>rm -rf /root/.cache/pip</code>,但是看起来这个指令并没有减小镜像的体积.由于这是在一个单独的RUN之中执行的,Docker的分层机制会对于本次的修改<a target="_blank" rel="noopener" href="https://docs.docker.com/reference/dockerfile/#run">创建一个新的文件层</a>,因此,执行指令<code>RUN rm -rf /root/.cache/pip</code>并不能达到删除pip缓存的效果,只会多创建一个文件层.<br>执行指令<code>docker history tts:latest</code>,可以看到构建的历史信息,</p>
+<img src="/blog/2024/12/04/Docker%E6%9E%84%E5%BB%BA%E9%95%9C%E5%83%8F%E7%9A%84%E7%BC%93%E5%AD%98%E7%AD%96%E7%95%A5/docker-history.png" class="" title="TTS Docker 构建历史">
+<p>看到rm并不会真正删除文件的数据,而是记录了文件的信息作为元数据.</p>
+<p>而buildah似乎在构建的时候清理了这些缓存,所以镜像体积减小了.</p>
+<p>解决方案也很简单,不让pip写入cache就可以了,执行pip指令的时候添加参数<code>--no-cache-dir</code>,可以得到docker的镜像体积与buildah类似.</p>
+<img src="/blog/2024/12/04/Docker%E6%9E%84%E5%BB%BA%E9%95%9C%E5%83%8F%E7%9A%84%E7%BC%93%E5%AD%98%E7%AD%96%E7%95%A5/docker-reduce.png" class="" title="no cache策略减小容器体积">
+
+<p>Docker官方提供了<a target="_blank" rel="noopener" href="https://docs.docker.com/build/building/best-practices/">最佳实践</a>,给容器构建提了一些建议,但是似乎并没有提供关于pip清除缓存的建议.对于Dockerfile的建议,存在一个工具,叫做<a target="_blank" rel="noopener" href="https://github.com/hadolint/hadolint">hadolint</a>,将之前的Dockerfile输入给hadolint,看看会提供给什么建议.</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">hadolint Dockerfile</span><br><span class="line">Dockerfile:2 DL3006 warning: Always tag the version of an image explicitly</span><br><span class="line">Dockerfile:6 DL3009 info: Delete the apt-get lists after installing something</span><br><span class="line">Dockerfile:7 DL3008 warning: Pin versions <span class="keyword">in</span> apt get install. Instead of `apt-get install &lt;package&gt;` use `apt-get install &lt;package&gt;=&lt;version&gt;`</span><br><span class="line">Dockerfile:13 DL3042 warning: Avoid use of cache directory with pip. Use `pip install --no-cache-dir &lt;package&gt;`</span><br><span class="line">Dockerfile:13 DL3013 warning: Pin versions <span class="keyword">in</span> pip. Instead of `pip install &lt;package&gt;` use `pip install &lt;package&gt;==&lt;version&gt;` or `pip install --requirement &lt;requirements file&gt;`</span><br><span class="line">Dockerfile:16 DL3059 info: Multiple consecutive `RUN` instructions. Consider consolidation.</span><br><span class="line">Dockerfile:16 DL3042 warning: Avoid use of cache directory with pip. Use `pip install --no-cache-dir &lt;package&gt;`</span><br><span class="line">Dockerfile:17 DL3059 info: Multiple consecutive `RUN` instructions. Consider consolidation.</span><br></pre></td></tr></table></figure>
+
+<p>可以看出,hadolint提供了一些建议,例如合并多个RUN指令,以及使用no cache dir参数.</p>
+<p>为此,结论是通过不同的方式进行构建,对于镜像的大小会有较大的影响.</p>
+
     </div>
 
     
@@ -207,6 +237,9 @@
                 </a>
             </div>
             <div class="post-nav-item">
+                <a href="/blog/2024/12/04/Docker%E7%9A%84%E6%96%87%E4%BB%B6%E9%A9%B1%E5%8A%A8/" rel="next" title="Docker的文件驱动">
+                  Docker的文件驱动 <i class="fa fa-angle-right"></i>
+                </a>
             </div>
           </div>
     </footer>
